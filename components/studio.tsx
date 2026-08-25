@@ -102,24 +102,13 @@ export function Studio() {
     <main className="studio-shell">
       <header className="topbar">
         <a className="wordmark" href="#canvas" aria-label="Figure Factory home"><span className="wordmark-mark">FF</span><span>Figure<br />Factory</span></a>
+        <form className="prompt-form" onSubmit={editSvg}>
+          <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={onPromptKeyDown} placeholder="Describe an SVG edit…" aria-label="Describe an SVG edit" />
+          <button className="make-button" disabled={working || !prompt.trim()} aria-label="Apply SVG edit">{working ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={16} />}<span>Make it</span></button>
+        </form>
         <div className="status"><span className={working ? "status-dot active" : "status-dot"} />{notice}</div>
         <button className="model-pill" onClick={() => setShowSettings(true)}><span>{settings.model}</span><ChevronDown size={14} /></button>
       </header>
-
-      <section className="prompt-section" aria-labelledby="prompt-heading">
-        <div className="section-index">01 / DIRECT</div>
-        <div className="prompt-copy">
-          <p className="eyebrow"><Sparkles size={14} /> AI SVG STUDIO</p>
-          <h1 id="prompt-heading">What should this<br />figure become?</h1>
-        </div>
-        <form className="prompt-form" onSubmit={editSvg}>
-          <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={onPromptKeyDown} placeholder="Make it feel like a 1960s scientific field guide…" aria-label="Describe an SVG edit" />
-          <div className="prompt-actions">
-            <span>⌘ + ENTER</span>
-            <button className="make-button" disabled={working || !prompt.trim()}>{working ? <LoaderCircle className="spin" size={19} /> : <Sparkles size={18} />}Make it</button>
-          </div>
-        </form>
-      </section>
 
       <section id="canvas" className="canvas-section" aria-labelledby="canvas-heading">
         <div className="canvas-toolbar">
