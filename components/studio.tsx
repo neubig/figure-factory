@@ -15,13 +15,50 @@ export function Studio() {
   const [showSettings, setShowSettings] = useState(false);
   const [showCode, setShowCode] = useState(false);
   const [working, setWorking] = useState(false);
-  const [notice, setNotice] = useState("Ready for direction");
+  const [notice, setNotice] = useState("Loading SVG editor…");
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [editorReady, setEditorReady] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const editorFrame = useRef<HTMLIFrameElement>(null);
+  const editorSvg = useRef("");
 
   useEffect(() => {
     fetch("/api/settings").then((response) => response.json()).then((data) => setSettings((current) => ({ ...current, ...data }))).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    function receiveEditorMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin || event.source !== editorFrame.current?.contentWindow) return;
+      if (event.data?.type === "figure-factory:ready") {
+        setEditorReady(true);
+        setNotice("Ready to edit");
+        editorFrame.current?.contentWindow?.postMessage({ type: "figure-factory:set-svg", svg }, window.location.origin);
+      }
+      if (event.data?.type === "figure-factory:changed") {
+        try {
+          const nextSvg = validateSvg(event.data.svg);
+          editorSvg.current = nextSvg;
+          setSvg(nextSvg);
+          setNotice("Canvas edited");
+        } catch {
+          setNotice("SVG-Edit produced invalid source");
+        }
+      }
+    }
+    window.addEventListener("message", receiveEditorMessage);
+    return () => window.removeEventListener("message", receiveEditorMessage);
+  }, [svg]);
+
+  useEffect(() => {
+    if (!editorReady || svg === editorSvg.current) return;
+    try {
+      const validSvg = validateSvg(svg);
+      editorSvg.current = validSvg;
+      editorFrame.current?.contentWindow?.postMessage({ type: "figure-factory:set-svg", svg: validSvg }, window.location.origin);
+    } catch {
+      // Source mode can be temporarily invalid while the user is typing.
+    }
+  }, [editorReady, svg]);
 
   async function saveSettings(event: FormEvent) {
     event.preventDefault();
@@ -123,10 +160,8 @@ export function Studio() {
           </div>
         </div>
         <div className="canvas-stage">
-          <div className="registration top-left" /><div className="registration top-right" /><div className="registration bottom-left" /><div className="registration bottom-right" />
-          {/* The SVG is a dynamic local data URL, so image optimization is not applicable. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`} alt="Current editable SVG artwork" />
+          <iframe ref={editorFrame} className="svg-editor" src="/svgedit/index.html" title="Interactive SVG editor" />
+          {!editorReady && <div className="editor-loading"><LoaderCircle className="spin" size={22} />Loading SVG-Edit</div>}
           {working && <div className="working-overlay"><div className="scanline" /><span>RECOMPOSING</span></div>}
         </div>
         {history.length > 0 && <div className="history-strip"><span>UNDO</span>{history.map((item, index) => <button key={`${item.prompt}-${index}`} onClick={() => { setSvg(item.svg); setHistory((items) => items.slice(index + 1)); setNotice("Previous version restored"); }}>{item.prompt}</button>)}</div>}

@@ -7,7 +7,8 @@ An AI-directed SVG studio built with Next.js, TypeScript, the Vercel AI SDK, and
 - Prompt-driven SVG edits with targeted `replace_svg` and full-document `write_svg` tools
 - Any OpenAI-compatible model, base URL, and API key
 - API keys stored in secure, HttpOnly cookies
-- Live SVG canvas with source editing and undo history
+- Full SVG-Edit canvas for selecting, drawing, moving, resizing, styling, and editing elements
+- Bidirectional synchronization between SVG-Edit, AI edits, source editing, and undo history
 - SVG upload, paste, copy, and download workflows
 - Validation against scripts, event handlers, and unsafe embedded content
 - Responsive, accessible interface ready for Vercel

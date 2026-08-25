@@ -10,9 +10,16 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "postinstall": "node scripts/copy-svg-edit.mjs",
+    "prebuild": "node scripts/copy-svg-edit.mjs"
   },
-  "keywords": ["svg", "ai", "vercel", "nextjs"],
+  "keywords": [
+    "svg",
+    "ai",
+    "vercel",
+    "nextjs"
+  ],
   "license": "MIT",
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.37",
@@ -21,6 +28,7 @@
     "next": "^16.3.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "svgedit": "^7.4.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

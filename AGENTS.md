@@ -13,4 +13,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Run `npm test`, `npm run lint`, `npm run typecheck`, and `npm run build` before delivery.
 - Provider credentials are stored only through `app/api/settings` as HttpOnly cookies.
 - SVG source changes must continue to pass `validateSvg` before rendering or persistence.
+- The interactive editor is the official `svgedit` package embedded at `/svgedit/index.html`; `scripts/copy-svg-edit.mjs` prepares its generated public assets during install and build.
+- Keep iframe messaging same-origin and synchronize all editor changes through validated SVG source.
+
 
