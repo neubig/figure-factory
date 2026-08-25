@@ -1,0 +1,150 @@
+"use client";
+
+import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, Clipboard, Code2, Download, LoaderCircle, Settings2, Sparkles, Upload, X } from "lucide-react";
+import { DEFAULT_SVG } from "@/lib/default-svg";
+import { validateSvg } from "@/lib/svg-tools";
+
+type Settings = { model: string; baseUrl: string; apiKey: string; hasApiKey: boolean };
+type HistoryItem = { prompt: string; svg: string };
+
+export function Studio() {
+  const [svg, setSvg] = useState(DEFAULT_SVG);
+  const [prompt, setPrompt] = useState("");
+  const [settings, setSettings] = useState<Settings>({ model: "gpt-4.1-mini", baseUrl: "https://api.openai.com/v1", apiKey: "", hasApiKey: false });
+  const [showSettings, setShowSettings] = useState(false);
+  const [showCode, setShowCode] = useState(false);
+  const [working, setWorking] = useState(false);
+  const [notice, setNotice] = useState("Ready for direction");
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/settings").then((response) => response.json()).then((data) => setSettings((current) => ({ ...current, ...data }))).catch(() => undefined);
+  }, []);
+
+  async function saveSettings(event: FormEvent) {
+    event.preventDefault();
+    const response = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) });
+    const data = await response.json();
+    if (!response.ok) return setNotice(data.error || "Could not save settings");
+    setSettings((current) => ({ ...current, apiKey: "", hasApiKey: data.hasApiKey }));
+    setShowSettings(false);
+    setNotice("Model settings saved");
+  }
+
+  async function editSvg(event?: FormEvent) {
+    event?.preventDefault();
+    if (!prompt.trim() || working) return;
+    if (!settings.hasApiKey) {
+      setShowSettings(true);
+      return setNotice("Add an API key to begin");
+    }
+    setWorking(true);
+    setNotice("Directing the model…");
+    try {
+      const response = await fetch("/api/edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, svg }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The edit failed.");
+      setHistory((items) => [{ prompt, svg }, ...items].slice(0, 8));
+      setSvg(validateSvg(data.svg));
+      setPrompt("");
+      setNotice(data.summary || "Canvas updated");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The edit failed.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function onPromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") editSvg();
+  }
+
+  async function importFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      setSvg(validateSvg(await file.text()));
+      setHistory([]);
+      setNotice(`${file.name} imported`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Invalid SVG file");
+    }
+    event.target.value = "";
+  }
+
+  async function pasteSvg() {
+    try {
+      setSvg(validateSvg(await navigator.clipboard.readText()));
+      setHistory([]);
+      setNotice("SVG pasted from clipboard");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Clipboard does not contain valid SVG");
+    }
+  }
+
+  async function copySvg() {
+    await navigator.clipboard.writeText(svg);
+    setNotice("SVG source copied");
+  }
+
+  function downloadSvg() {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+    link.download = "figure-factory.svg";
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setNotice("SVG downloaded");
+  }
+
+  return (
+    <main className="studio-shell">
+      <header className="topbar">
+        <a className="wordmark" href="#canvas" aria-label="Figure Factory home"><span className="wordmark-mark">FF</span><span>Figure<br />Factory</span></a>
+        <div className="status"><span className={working ? "status-dot active" : "status-dot"} />{notice}</div>
+        <button className="model-pill" onClick={() => setShowSettings(true)}><span>{settings.model}</span><ChevronDown size={14} /></button>
+      </header>
+
+      <section className="prompt-section" aria-labelledby="prompt-heading">
+        <div className="section-index">01 / DIRECT</div>
+        <div className="prompt-copy">
+          <p className="eyebrow"><Sparkles size={14} /> AI SVG STUDIO</p>
+          <h1 id="prompt-heading">What should this<br />figure become?</h1>
+        </div>
+        <form className="prompt-form" onSubmit={editSvg}>
+          <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={onPromptKeyDown} placeholder="Make it feel like a 1960s scientific field guide…" aria-label="Describe an SVG edit" />
+          <div className="prompt-actions">
+            <span>⌘ + ENTER</span>
+            <button className="make-button" disabled={working || !prompt.trim()}>{working ? <LoaderCircle className="spin" size={19} /> : <Sparkles size={18} />}Make it</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="canvas" className="canvas-section" aria-labelledby="canvas-heading">
+        <div className="canvas-toolbar">
+          <div><span className="section-index">02 / CANVAS</span><h2 id="canvas-heading">Live artwork</h2></div>
+          <div className="tool-group">
+            <input ref={fileInput} type="file" accept="image/svg+xml,.svg" onChange={importFile} hidden />
+            <button onClick={() => fileInput.current?.click()} title="Upload SVG"><Upload size={17} /><span>Import</span></button>
+            <button onClick={pasteSvg} title="Paste SVG"><Clipboard size={17} /><span>Paste</span></button>
+            <button onClick={() => setShowCode(true)} title="Edit source"><Code2 size={17} /><span>Source</span></button>
+            <button onClick={copySvg} title="Copy source"><Check size={17} /><span>Copy</span></button>
+            <button className="download-button" onClick={downloadSvg}><Download size={17} /><span>Download</span></button>
+          </div>
+        </div>
+        <div className="canvas-stage">
+          <div className="registration top-left" /><div className="registration top-right" /><div className="registration bottom-left" /><div className="registration bottom-right" />
+          {/* The SVG is a dynamic local data URL, so image optimization is not applicable. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`} alt="Current editable SVG artwork" />
+          {working && <div className="working-overlay"><div className="scanline" /><span>RECOMPOSING</span></div>}
+        </div>
+        {history.length > 0 && <div className="history-strip"><span>UNDO</span>{history.map((item, index) => <button key={`${item.prompt}-${index}`} onClick={() => { setSvg(item.svg); setHistory((items) => items.slice(index + 1)); setNotice("Previous version restored"); }}>{item.prompt}</button>)}</div>}
+      </section>
+
+      {showSettings && <div className="modal-backdrop" onMouseDown={() => setShowSettings(false)}><form className="modal" onSubmit={saveSettings} onMouseDown={(event) => event.stopPropagation()}><div className="modal-heading"><div><p className="eyebrow"><Settings2 size={14} /> CONNECTION</p><h2>Choose your model</h2></div><button type="button" className="icon-button" onClick={() => setShowSettings(false)}><X /></button></div><label>MODEL ID<input value={settings.model} onChange={(event) => setSettings({ ...settings, model: event.target.value })} placeholder="gpt-4.1-mini" /></label><label>OPENAI-COMPATIBLE BASE URL<input value={settings.baseUrl} onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })} placeholder="https://api.openai.com/v1" /></label><label>API KEY<input type="password" value={settings.apiKey} onChange={(event) => setSettings({ ...settings, apiKey: event.target.value })} placeholder={settings.hasApiKey ? "Saved — enter to replace" : "sk-…"} /></label><p className="privacy-note">Your key is stored in a secure, HttpOnly browser cookie and is never returned to client-side JavaScript after saving.</p><button className="save-button">Save connection</button></form></div>}
+      {showCode && <div className="modal-backdrop" onMouseDown={() => setShowCode(false)}><div className="modal code-modal" onMouseDown={(event) => event.stopPropagation()}><div className="modal-heading"><div><p className="eyebrow"><Code2 size={14} /> SOURCE</p><h2>Edit the SVG</h2></div><button className="icon-button" onClick={() => setShowCode(false)}><X /></button></div><textarea value={svg} onChange={(event) => setSvg(event.target.value)} spellCheck={false} /><button className="save-button" onClick={() => { try { setSvg(validateSvg(svg)); setShowCode(false); setNotice("Source updated"); } catch (error) { setNotice(error instanceof Error ? error.message : "Invalid SVG"); } }}>Apply source</button></div></div>}
+    </main>
+  );
+}
