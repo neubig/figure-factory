@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Clipboard, Code2, Download, LoaderCircle, Settings2, Sparkles, Upload, X } from "lucide-react";
 import { DEFAULT_SVG } from "@/lib/default-svg";
 import { validateSvg } from "@/lib/svg-tools";
@@ -21,17 +21,51 @@ export function Studio() {
   const fileInput = useRef<HTMLInputElement>(null);
   const editorFrame = useRef<HTMLIFrameElement>(null);
   const editorSvg = useRef("");
+  const editorReadyRef = useRef(false);
+  const modelReadyRef = useRef(false);
+  const settingsRef = useRef(settings);
+  const settingsLoadedRef = useRef(false);
+
+
+  const runPreflight = useCallback(async () => {
+    setNotice("Checking model connection…");
+    try {
+      const response = await fetch("/api/preflight", { method: "POST" });
+      const data = await response.json();
+      modelReadyRef.current = response.ok && data.ready;
+      setNotice(modelReadyRef.current ? "Ready to edit" : data.error || "Model connection failed");
+      return modelReadyRef.current;
+    } catch {
+      modelReadyRef.current = false;
+      setNotice("Model connection failed");
+      return false;
+    }
+  }, []);
 
   useEffect(() => {
-    fetch("/api/settings").then((response) => response.json()).then((data) => setSettings((current) => ({ ...current, ...data }))).catch(() => undefined);
-  }, []);
+    fetch("/api/settings")
+      .then((response) => response.json())
+      .then(async (data) => {
+        const nextSettings = { ...settingsRef.current, ...data };
+        settingsRef.current = nextSettings;
+        settingsLoadedRef.current = true;
+        setSettings(nextSettings);
+        if (nextSettings.hasApiKey) await runPreflight();
+        else if (editorReadyRef.current) setNotice("Add an API key for AI edits");
+      })
+      .catch(() => {
+        settingsLoadedRef.current = true;
+        if (editorReadyRef.current) setNotice("Add an API key for AI edits");
+      });
+  }, [runPreflight]);
 
   useEffect(() => {
     function receiveEditorMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin || event.source !== editorFrame.current?.contentWindow) return;
       if (event.data?.type === "figure-factory:ready") {
+        editorReadyRef.current = true;
         setEditorReady(true);
-        setNotice("Ready to edit");
+        if (settingsLoadedRef.current) setNotice(modelReadyRef.current ? "Ready to edit" : settingsRef.current.hasApiKey ? "Checking model connection…" : "Add an API key for AI edits");
         editorFrame.current?.contentWindow?.postMessage({ type: "figure-factory:set-svg", svg }, window.location.origin);
       }
       if (event.data?.type === "figure-factory:changed") {
@@ -65,9 +99,10 @@ export function Studio() {
     const response = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) });
     const data = await response.json();
     if (!response.ok) return setNotice(data.error || "Could not save settings");
-    setSettings((current) => ({ ...current, apiKey: "", hasApiKey: data.hasApiKey }));
-    setShowSettings(false);
-    setNotice("Model settings saved");
+    const nextSettings = { ...settings, apiKey: "", hasApiKey: data.hasApiKey };
+    settingsRef.current = nextSettings;
+    setSettings(nextSettings);
+    if (await runPreflight()) setShowSettings(false);
   }
 
   async function editSvg(event?: FormEvent) {
@@ -76,6 +111,10 @@ export function Studio() {
     if (!settings.hasApiKey) {
       setShowSettings(true);
       return setNotice("Add an API key to begin");
+    }
+    if (!(await runPreflight())) {
+      setShowSettings(true);
+      return;
     }
     setWorking(true);
     setNotice("Directing the model…");
